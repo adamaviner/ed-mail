@@ -274,13 +274,14 @@ export class Mail<C extends MailConfig> {
     return saved ? { subject: saved.subject, body: saved.body, custom: true } : { ...spec.builtIn, custom: false }
   }
 
-  /** Saves wording for a kind: cleaned (safeHtml) and checked against the kind's placeholders first. */
-  async saveText(ctx: RunMutationCtx, kind: KindOf<C>, t: { subject: string; body: string }, by?: string): Promise<void> {
+  /** Saves wording for a kind: cleaned (safeHtml) and checked against the kind's placeholders first. Returns it as stored. */
+  async saveText(ctx: RunMutationCtx, kind: KindOf<C>, t: { subject: string; body: string }, by?: string): Promise<{ subject: string; body: string }> {
     const spec = this.kindSpec(kind)
     const clean = { subject: spec.email === false ? '' : t.subject.replace(/\s+/g, ' ').trim(), body: safeHtml(t.body.trim()) }
     const problem = textProblem(spec, clean)
     if (problem) throw new ConvexError(problem)
     await ctx.runMutation(this.component.texts.save, { key: kind, ...clean, by, now: Date.now() })
+    return clean
   }
 
   async resetText(ctx: RunMutationCtx, kind: KindOf<C>): Promise<void> {

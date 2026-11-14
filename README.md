@@ -8,7 +8,7 @@ React pieces.
 The design and the build stages are in ed-schedule's `docs/email-lib-plan.md`. ed-schedule adopts
 the library first; ed-market (the auction app) later.
 
-**Status:** v0.1: sending, retries, the log, saved wording, the digest and the admin API (stage 2). The React package comes in v0.2.
+**Status:** v0.1: sending, retries, the log, saved wording, the digest and the admin API (stage 2). v0.2 adds the React package (stage 4).
 
 ## What was checked before building (2026-11-14)
 
@@ -68,6 +68,7 @@ src/client     what the app's convex/ code imports: Mail, its worker and admin a
 src/react      React components                                                     @earthdance/mail/react
 src/test.ts    convex-test registration and a fake Google                           @earthdance/mail/test
 example/convex a minimal app wired up the way an app should be
+example/src    its Admin → Email page, typechecked only
 ```
 
 ## How sending works
@@ -141,6 +142,41 @@ await mail.enqueue(ctx, { kind: 'eanda.offer', to, subject, html, ref: { type: '
 /* the app's main CSS */
 @source '../node_modules/@earthdance/mail/dist';
 ```
+
+### The React package (`@earthdance/mail/react`)
+
+Its peer dependencies (`react`, `convex`, `@base-ui/react`, `lucide-react` and the `@tiptap/*`
+packages in `package.json`) are optional, so an app that only sends needs none of them. It brings
+its own button, input, tabs and dialog on `@base-ui/react`, styled with the shadcn token classes
+(`bg-muted`, `text-destructive`, ...); colours come from the app's theme. It knows nothing about the
+app's login (`auth` goes through to the app's checks), router, bundler or image storage.
+`example/src/EmailAdmin.tsx` is the reference, and is typechecked against the example's api.
+
+```tsx
+<MailAdminPage
+  api={api.mailAdmin}            // checked against the library's admin api
+  auth={{ token }}
+  config={mailConfig}
+  tab={tab} onTabChange={setTab} // the app keeps the tab (and optionally editKind) in its URL
+  showBodies={isAdmin}           // false: the log only, without bodies; admin-only queries aren't called
+  uploadImage={(file) => upload(file)}           // returns the image's public address
+  refLink={(ref) => <Link to={...}>Open</Link>}  // what an email is about; how 'rebuild' kinds are resent
+  previews={{ 'welcome.event': (letter) => ({ subject, html, caption }) }}  // where sample values aren't enough
+  extraRows={[{ key: 'orientation', sender: 'welcome', title: 'Orientation PDF', children: <OrientationForm /> }]}
+  notice={signInResult}          // how a Google sign-in went, read from the address afterConnect returned
+  onDirtyChange={setBlocked}     // the open letter has unsaved changes: block the router
+/>
+```
+
+- **Emails**: every kind in the config under its sender line, with custom or built-in wording;
+  editable ones open `LetterEditor`. **Senders**: sign in, send as / from name / reply-to, test,
+  retry failed, disconnect, and the Google Cloud setup steps until the client is set. **Sent &
+  failed**: the log with filters and recipient search, settings at the top (keep for N days,
+  failure reports to), a detail view with the body and Resend.
+- `LetterEditor` works alone too (one kind's wording), and its parts are exported for an app's own
+  editors: `RichTextEditor`, `RichEmailEditor`, `useLetterFields`, `PlaceholderChips`,
+  `PlaceholderNotes`, `LetterPreview`, `defaultPreview`. `MailStatus` is the badge for feature UIs.
+- Tests that need a DOM say `// @vitest-environment happy-dom` at the top; the rest run in edge-runtime.
 
 ```ts
 // in a convex-test suite

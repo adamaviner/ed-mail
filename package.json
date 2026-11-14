@@ -14,7 +14,7 @@
   "scripts": {
     "build": "rm -rf dist *.tsbuildinfo && tsc --project ./tsconfig.build.json",
     "build:codegen": "convex codegen --component-dir ./src/component && npm run build",
-    "typecheck": "tsc --noEmit -p tsconfig.test.json && tsc -p example/convex",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json && tsc -p example/convex && tsc -p example/src",
     "lint": "oxlint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -58,25 +58,70 @@
     }
   },
   "peerDependencies": {
+    "@base-ui/react": "^1.8.0",
+    "@tiptap/core": "^3.32.1",
+    "@tiptap/extension-image": "^3.32.1",
+    "@tiptap/extension-text-align": "^3.32.1",
+    "@tiptap/pm": "^3.32.1",
+    "@tiptap/react": "^3.32.1",
+    "@tiptap/starter-kit": "^3.32.1",
     "convex": "^1.46.0",
+    "lucide-react": "^1.48.0",
     "react": "^19.0.0"
   },
   "peerDependenciesMeta": {
+    "@base-ui/react": {
+      "optional": true
+    },
+    "@tiptap/core": {
+      "optional": true
+    },
+    "@tiptap/extension-image": {
+      "optional": true
+    },
+    "@tiptap/extension-text-align": {
+      "optional": true
+    },
+    "@tiptap/pm": {
+      "optional": true
+    },
+    "@tiptap/react": {
+      "optional": true
+    },
+    "@tiptap/starter-kit": {
+      "optional": true
+    },
+    "lucide-react": {
+      "optional": true
+    },
     "react": {
       "optional": true
     }
   },
   "devDependencies": {
+    "@base-ui/react": "^1.9.0",
     "@edge-runtime/vm": "^5.0.0",
     "@tailwindcss/cli": "^4.3.3",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@tiptap/core": "^3.34.0",
+    "@tiptap/extension-image": "^3.34.0",
+    "@tiptap/extension-text-align": "^3.34.0",
+    "@tiptap/pm": "^3.34.0",
+    "@tiptap/react": "^3.34.0",
+    "@tiptap/starter-kit": "^3.34.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.3.0",
     "convex": "^1.50.0",
     "convex-test": "^0.0.71",
+    "happy-dom": "^21.0.4",
+    "lucide-react": "^1.73.0",
     "oxlint": "^1.81.0",
     "prettier": "3.9.10",
     "prettier-plugin-tailwindcss": "0.8.1",
     "react": "^19.2.8",
+    "react-dom": "^19.3.1",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.0.0",
