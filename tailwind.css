@@ -1,0 +1,19 @@
+/*
+ * Only for Prettier's class sorting and for checking the package's classes build. The apps bring
+ * their own Tailwind setup and shadcn theme; this declares the same token names so the classes the
+ * React package uses (bg-muted, text-muted-foreground, border-border, ...) are known here too.
+ */
+@import 'tailwindcss';
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
