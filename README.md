@@ -8,7 +8,7 @@ React pieces.
 The design and the build stages are in ed-schedule's `docs/email-lib-plan.md`. ed-schedule adopts
 the library first; ed-market (the auction app) later.
 
-**Status:** scaffold (stage 0). The component only holds settings so far.
+**Status:** v0.1: sending, retries, the log, saved wording, the digest and the admin API (stage 2). The React package comes in v0.2.
 
 ## What was checked before building (2026-11-14)
 
@@ -64,38 +64,91 @@ version) and 1.50 (this repo's). Items marked _tested_ were run, not only read.
 ```
 src/core       pure TypeScript, no Convex or React; runs in Convex and the browser   @earthdance/mail/core
 src/component  the Convex component: tables, queries, mutations; no network, no secrets
-src/client     what the app's convex/ code imports (the Mail class)                  @earthdance/mail
+src/client     what the app's convex/ code imports: Mail, its worker and admin api  @earthdance/mail
 src/react      React components                                                     @earthdance/mail/react
-src/test.ts    convex-test registration                                             @earthdance/mail/test
-example/convex a minimal app mounting the component, for `convex dev` here
+src/test.ts    convex-test registration and a fake Google                           @earthdance/mail/test
+example/convex a minimal app wired up the way an app should be
 ```
+
+## How sending works
+
+- `mail.enqueue(ctx, message)` from a mutation writes the email and its body in the caller's
+  transaction and makes sure a **drain** runs for its sender. Build the email in the mutation that
+  changes the state it is about; never write a retry loop.
+- The drain is an action **in the app** (`mail.worker()`), so it can read the app's secrets and call
+  its functions. One drain per sender at a time (a lease on the sender row): it gets an access token
+  once (cached on the row until it expires), sends what is due oldest first, pausing 1.5 s between
+  sends (Gmail allows roughly 150 a minute per account), then schedules itself for the next due time
+  or stops. A drain that crashes is taken over when its lease runs out; that can very rarely send one
+  email twice.
+- A failure is retried after 1, 5 and 25 minutes (Admin setting). **`onSettled` is called once, with
+  the final outcome**, never between retries. A sign-in Google stopped accepting fails everything
+  queued for that sender at once, and the sender line shows why. A file that can't be fetched fails
+  that email only.
+- `guard` is asked before each attempt whether the email is still wanted (e.g. the offer wasn't
+  withdrawn); if not, the email is cancelled quietly. `chain`: queueing an email with the same chain
+  cancels an older one still queued, so pressing Resend during retries sends once.
+- With no account connected for the sender, the email is logged as failed at once and `onSettled`
+  hears in the same transaction. "Retry failed emails" (admin) queues a sender's last week of
+  failures again.
+- `mail.sendNow(ctx, message)` from an action: one attempt, logged, the result returned. For test
+  sends and emails with file bytes (the bytes aren't stored, so those can't be resent from the log).
+- The daily digest (`digest` in the worker; the app's cron calls it) emails the failures nobody was
+  told about to the address in the settings, from the digest sender or any healthy one, and marks
+  them reported. Its own failures are never reported.
+- `mail.cleanup(ctx)` (the app's nightly cleanup) deletes messages and bodies past the retention
+  days (default 183), a batch at a time; call again while `more`.
 
 ## Using it in an app
 
+The example app (`example/convex`) is the reference. In short:
+
 ```ts
 // convex/convex.config.ts
-import { defineApp } from 'convex/server'
 import mail from '@earthdance/mail/convex.config.js'
-const app = defineApp()
 app.use(mail)
-export default app
 
-// convex/mail.ts
-import { Mail } from '@earthdance/mail'
-import { components } from './_generated/api'
-export const mail = new Mail(components.mail)
+// src/lib/mail/config.ts: every email, with its sender line, and the wording admins may change
+export const mailConfig = defineMailConfig({ senders: {...}, kinds: {...} })
+
+// convex/mail.ts (annotated, to break the type cycle through mailWorker.ts)
+export const mail: Mail<typeof mailConfig> = new Mail(components.mail, {
+  config: mailConfig,
+  google: () => ..., encryptionSecret: () => ..., siteUrl: () => process.env.CONVEX_SITE_URL!,
+  afterConnect: ({ senderKey, error }) => '<the admin page>',
+  worker: internal.mailWorker,
+  attachments: { orientation: async (ctx) => fetchAttachment(url, 'Orientation.pdf') },
+})
+
+// convex/mailWorker.ts
+export const { drain, revoke, digest } = mail.worker()
+
+// convex/mailAdmin.ts: the public api, behind the app's own checks (`auth` is whatever the app passes)
+export const { senders, startConnect, ... } = mail.adminApi({ requireAdmin, requireStaff, keepGrant })
+
+// convex/http.ts: the Google callback (or call mail.handleOAuthCallback from a route of your own;
+// it returns null for states that aren't the library's)
+mail.registerRoutes(http)
+
+// a feature's mutation
+await mail.enqueue(ctx, { kind: 'eanda.offer', to, subject, html, ref: { type: 'eandaApplication', id },
+  chain: `eanda-offer:${id}`, onSettled: { fn: internal.eanda.offerSettled, context: { id } },
+  guard: { fn: internal.eanda.offerStillWanted, context: { id } } })
+// with internalMutation({ args: settledArgs, ... }) and internalQuery({ args: guardArgs, ... })
 ```
 
 ```css
 /* the app's main CSS */
-@source '../node_modules/@earthdance/mail/dist';
+@source "../node_modules/@earthdance/mail/dist";
 ```
 
 ```ts
 // in a convex-test suite
-import mailTest from '@earthdance/mail/test'
+import mailTest, { fakeGoogle } from '@earthdance/mail/test'
 const t = convexTest(schema, modules)
 mailTest.register(t)
+const google = fakeGoogle({ fallback: otherFetch })
+vi.stubGlobal('fetch', google.fetch) // google.sent holds every email, parsed
 ```
 
 ## Developing
@@ -118,5 +171,6 @@ ed-schedule's local backends (3210 and up); if you recreate it, move it back the
 npm run release -- 0.1.0
 ```
 
-From a clean `main`: builds, runs every check, commits the version bump on `main`, puts the tag
-`v0.1.0` on a commit just past it that adds `dist`, and pushes both. `main` never holds `dist`.
+From a clean branch (usually `main`; a stage branch may release before its PR is merged, so the
+app's PR can install the tag): builds, runs every check, commits the version bump, puts the tag
+`v0.1.0` on a commit just past it that adds `dist`, and pushes both. Branches never hold `dist`.

@@ -8,7 +8,13 @@
  * @module
  */
 
+import type * as drain from "../drain.js";
+import type * as lease from "../lease.js";
+import type * as maintenance from "../maintenance.js";
+import type * as messages from "../messages.js";
+import type * as senders from "../senders.js";
 import type * as settings from "../settings.js";
+import type * as texts from "../texts.js";
 
 import type {
   ApiFromModules,
@@ -18,7 +24,13 @@ import type {
 import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
+  drain: typeof drain;
+  lease: typeof lease;
+  maintenance: typeof maintenance;
+  messages: typeof messages;
+  senders: typeof senders;
   settings: typeof settings;
+  texts: typeof texts;
 }> = anyApi as any;
 
 /**

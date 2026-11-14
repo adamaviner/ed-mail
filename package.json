@@ -12,9 +12,8 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "tsc --project ./tsconfig.build.json",
+    "build": "rm -rf dist *.tsbuildinfo && tsc --project ./tsconfig.build.json",
     "build:codegen": "convex codegen --component-dir ./src/component && npm run build",
-    "build:clean": "rm -rf dist *.tsbuildinfo && npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.test.json && tsc -p example/convex",
     "lint": "oxlint",
     "format": "prettier --write .",

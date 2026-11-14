@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { escapeHtml, isEmail } from './index.js'
+import { escapeHtml, isEmail } from './text.js'
 
 describe('core', () => {
   test('isEmail accepts plain addresses and trims', () => {

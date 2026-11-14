@@ -11,4 +11,4 @@ ed-schedule's `docs/email-lib-plan.md`.
   here may assume an app's login, router, Vite or WordPress: ed-schedule and ed-market both use it.
 - List queries are paginated and indexed; never read `bodies` from a list query.
 - Comments explain why, in plain sentences.
-- Release only with `npm run release -- X.Y.Z`; never commit `dist` on `main`.
+- Release only with `npm run release -- X.Y.Z`; never commit `dist` on a branch.
