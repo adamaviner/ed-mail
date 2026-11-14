@@ -139,7 +139,7 @@ await mail.enqueue(ctx, { kind: 'eanda.offer', to, subject, html, ref: { type: '
 
 ```css
 /* the app's main CSS */
-@source "../node_modules/@earthdance/mail/dist";
+@source '../node_modules/@earthdance/mail/dist';
 ```
 
 ```ts
