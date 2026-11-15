@@ -8,7 +8,7 @@ React pieces.
 The design and the build stages are in ed-schedule's `docs/email-lib-plan.md`. ed-schedule adopts
 the library first; ed-market (the auction app) later.
 
-**Status:** v0.1: sending, retries, the log, saved wording, the digest and the admin API (stage 2). v0.2 adds the React package (stage 4).
+**Status:** v0.2.5, used by ed-schedule. v0.1: sending, retries, the log, saved wording, the digest and the admin API. v0.2: the React package, `renderText`, text-only emails in the frame.
 
 ## What was checked before building (2026-11-14)
 
@@ -187,6 +187,63 @@ mailTest.register(t)
 const google = fakeGoogle({ fallback: otherFetch })
 vi.stubGlobal('fetch', google.fetch) // google.sent holds every email, parsed
 ```
+
+## API
+
+### `@earthdance/mail` (the app's `convex/` code)
+
+`new Mail(components.mail, options)`; `options`: `config`, `google` (a function returning the
+OAuth client id and secret, or null), `encryptionSecret`, `siteUrl`, `callbackPath`, `afterConnect`
+(where Google's callback sends the admin), `worker` (the app's `internal.mailWorker`), named
+`attachments` resolvers, `logUrl` (linked from the digest).
+
+| Method                                                          | From             | Does                                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enqueue(ctx, message)`                                         | mutation         | Queues an email (logged, sent by the drain, retried); returns its id. `message`: `kind`, `to`, `cc`, `replyTo`, `subject`, `html` and/or `text`, `ref`, `scope`, `chain`, `attachments` (names), `onSettled`, `guard`, `by`, `sender` (to override the kind's). |
+| `sendNow(ctx, message)`                                         | action           | One attempt, logged, result returned; may carry `files` (bytes, not stored).                                                                                                                                                                                    |
+| `cancelChain(ctx, chain)`                                       | mutation         | Cancels what's still queued in a chain.                                                                                                                                                                                                                         |
+| `statusFor(ctx, ref, kind?)`                                    | query            | The latest email for a thing, for a badge.                                                                                                                                                                                                                      |
+| `ready(ctx, sender)` / `noticeAddress(ctx, sender)`             | query            | Whether a line can send / its account's address (never the token).                                                                                                                                                                                              |
+| `text(ctx, kind)` / `saveText` / `resetText`                    | query / mutation | An editable kind's wording: saved, or built-in. Saving runs `safeHtml` and the kind's checks.                                                                                                                                                                   |
+| `settings` / `updateSettings`                                   | query / mutation | Retention days, digest address, retry minutes.                                                                                                                                                                                                                  |
+| `retryFailed(ctx, sender)` / `resend(ctx, id)`                  | mutation         | Queue a line's last week of failures again / send a stored copy again.                                                                                                                                                                                          |
+| `cleanup(ctx)`                                                  | mutation         | Deletes past retention, a batch at a time (`more`).                                                                                                                                                                                                             |
+| `digest(ctx)`                                                   | action           | Sends the failure report, if an address is set and something failed.                                                                                                                                                                                            |
+| `worker()`                                                      | –                | `{ drain, revoke, digest }` internal actions to export from `convex/mailWorker.ts`.                                                                                                                                                                             |
+| `adminApi({ requireAdmin, requireStaff, keepGrant })`           | –                | The public functions the React package calls, behind the app's own checks.                                                                                                                                                                                      |
+| `startConnect` / `handleOAuthCallback` / `registerRoutes(http)` | –                | Google sign-in for a line.                                                                                                                                                                                                                                      |
+
+Also: `settledArgs` / `guardArgs` (validators for the app's `onSettled` mutation and `guard`
+query) and `fetchAttachment(url, name)`.
+
+### `@earthdance/mail/core` (anywhere)
+
+`defineMailConfig` (senders, kinds, `text` specs; checked where it's defined), `textProblem`,
+`renderText(spec, letter, values)` (a kind's letter filled for one recipient: subject, framed
+HTML, text), `fillTemplate`, `bodyHtml`, `placeholdersIn` / `unknownPlaceholders` /
+`missingPlaceholders`, `emailShell`, `htmlToText`, `textToHtml`, `safeHtml`, `escapeHtml`,
+`isEmail`, the MIME builder, and the Google OAuth helpers (`authUrl`, `exchangeCode`,
+`accessToken`, `revoke`) that an app's other Google features (ed-schedule's chef inbox) can share.
+
+### `@earthdance/mail/react` and `@earthdance/mail/test`
+
+See "The React package" above. `/test`: `register(t)` for `convex-test` and `fakeGoogle()`.
+
+## Adopting it in ed-market
+
+ed-market (the auction app) sends through Gmail with its own code today and plans to leave Clerk
+and Resend first. Nothing in the library assumes ed-schedule: auth is whatever `adminApi`'s checks
+take, plain-text emails work, and no router, Vite or WordPress is needed. Adopting it would replace:
+
+- `convex/email.ts` and `convex/emailSendLocks.ts` (sending and its locks) with `enqueue` /
+  `sendNow` and the per-line drain, which also paces bulk sends;
+- `convex/gmailConnect.ts` and `src/lib/gmail.ts` (Google sign-in and the Gmail calls) with the
+  senders and `@earthdance/mail/core`;
+- later, the blast tables (`emailBlasts`, `emailBlastRecipients`, `emailBlastRuns.ts`,
+  `emailBlastsSend.ts`): a blast becomes "enqueue many with one `scope` (or a future `batch` id)
+  and read counts from the log".
+
+Its kinds and senders go in its own `defineMailConfig`; its Admin gets `MailAdminPage`.
 
 ## Developing
 
