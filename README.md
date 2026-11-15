@@ -131,8 +131,9 @@ export const { senders, startConnect, ... } = mail.adminApi({ requireAdmin, requ
 // it returns null for states that aren't the library's)
 mail.registerRoutes(http)
 
-// a feature's mutation
-await mail.enqueue(ctx, { kind: 'eanda.offer', to, subject, html, ref: { type: 'eandaApplication', id },
+// a feature's mutation: an editable kind's wording (saved, or built-in), filled for one recipient
+const { subject, html, text } = renderText(mailConfig.kinds['eanda.offer'].text!, await mail.text(ctx, 'eanda.offer'), values)
+await mail.enqueue(ctx, { kind: 'eanda.offer', to, subject, html, text, ref: { type: 'eandaApplication', id },
   chain: `eanda-offer:${id}`, onSettled: { fn: internal.eanda.offerSettled, context: { id } },
   guard: { fn: internal.eanda.offerStillWanted, context: { id } } })
 // with internalMutation({ args: settledArgs, ... }) and internalQuery({ args: guardArgs, ... })
