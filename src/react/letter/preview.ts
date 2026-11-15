@@ -5,6 +5,7 @@
 import { useSyncExternalStore } from 'react'
 import type { KindSpec } from '../../core/config.js'
 import { emailShell } from '../../core/emailHtml.js'
+import { specKeys } from '../../core/render.js'
 import { type Letter, fillTemplate } from '../../core/template.js'
 
 export interface RenderedPreview {
@@ -26,8 +27,7 @@ export function defaultPreview(spec: KindSpec, letter: Letter): RenderedPreview 
     subject: letter.subject,
     body: letter.body,
     values: { ...text?.sample },
-    known: new Set(text?.placeholders.map((p) => p.key)),
-    blocks: new Set(text?.placeholders.filter((p) => p.block).map((p) => p.key)),
+    ...(text ? specKeys(text) : { known: new Set<string>() }),
     marked: () => true,
     dropParagraph: text?.dropParagraph,
   })

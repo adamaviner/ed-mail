@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { defineMailConfig, textProblem } from './config.js'
 import { GoogleError, accessToken, exchangeCode } from './google.js'
 import { buildMime } from './mime.js'
+import { renderText } from './render.js'
 import { bodyHtml, fillTemplate, missingPlaceholders, placeholdersIn, unknownPlaceholders } from './template.js'
 import { textToHtml } from './text.js'
 import { decryptToken, encryptToken } from './tokenCrypt.js'
@@ -88,6 +89,24 @@ describe('templates', () => {
       dropParagraph: ['pay'],
     })
     expect(out).toEqual({ subject: 'For Ana <3', body: '<p>Dear Ana &lt;3,</p><ul><li>One</li></ul>' })
+  })
+
+  test('renderText fills a kind’s letter by its spec, framed, with plain text', () => {
+    const spec = {
+      builtIn: { subject: '', body: '' },
+      placeholders: [
+        { key: 'name', label: 'Name' },
+        { key: 'link', label: 'Link' },
+        { key: 'extra', label: 'Extra', block: true },
+      ],
+      dropParagraph: ['link'],
+    }
+    const out = renderText(spec, { subject: 'Hi {name}', body: '<p>Dear {name},</p>\n<p><a href="{link}">Go</a></p>\n<p>{extra}</p>\n<p>Bye {nope}</p>' }, { name: 'Ana', link: '', extra: '' })
+    expect(out.subject).toBe('Hi Ana')
+    expect(out.unknown).toEqual(['nope'])
+    expect(out.html).toContain('Dear Ana,')
+    expect(out.html).not.toContain('Go')
+    expect(out.text).toBe('Dear Ana,\n\nBye {nope}')
   })
 
   test('plain text becomes paragraphs', () => {
