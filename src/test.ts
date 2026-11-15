@@ -7,6 +7,8 @@ import { componentsGeneric, type GenericSchema, type SchemaDefinition } from 'co
 import schema from './component/schema.js'
 import type { ComponentApi } from './component/_generated/component.js'
 
+export { fakeGoogle, gmailUnauthorized, gmailUnavailable, parseMime, type FakeGoogleOptions, type SentMail } from './testing/fakeGoogle.js'
+
 const modules = import.meta.glob('./component/**/*.ts')
 
 /**

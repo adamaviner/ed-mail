@@ -8,7 +8,12 @@
  * @module
  */
 
-import type * as example from "../example.js";
+import type * as http from "../http.js";
+import type * as mail from "../mail.js";
+import type * as mailAdmin from "../mailAdmin.js";
+import type * as mailConfig from "../mailConfig.js";
+import type * as mailWorker from "../mailWorker.js";
+import type * as signup from "../signup.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +22,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  example: typeof example;
+  http: typeof http;
+  mail: typeof mail;
+  mailAdmin: typeof mailAdmin;
+  mailConfig: typeof mailConfig;
+  mailWorker: typeof mailWorker;
+  signup: typeof signup;
 }>;
 
 /**
