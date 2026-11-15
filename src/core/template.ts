@@ -84,6 +84,9 @@ export function fillTemplate(o: FillOptions): Letter {
     return v ? `<div data-fill="${key}">${v}</div>` : `<p data-fill="${key}"><span style="${EMPTY_STYLE}">{${key}}</span></p>`
   }
   const fill = (text: string, escape: boolean) => text.replace(PLACEHOLDER, (whole, key: string) => (known.has(key) ? value(key, escape) : whole))
+  // Inside a tag (an href) a value is only escaped: a preview's marking there would break the tag.
+  const inTag = (tag: string) => tag.replace(PLACEHOLDER, (whole, key: string) => (known.has(key) ? escapeHtml(values[key] ?? '') : whole))
+  const fillBody = (html: string) => html.replace(/<[^>]*>|[^<]+/g, (chunk) => (chunk.startsWith('<') ? inTag(chunk) : fill(chunk, true)))
   let html = bodyHtml(o.body)
   // The preview keeps an empty fill-in's paragraph, to show what's left to fill in.
   for (const key of o.dropParagraph ?? []) {
@@ -94,6 +97,6 @@ export function fillTemplate(o: FillOptions): Letter {
   return {
     // The subject is plain text: no escaping, and no line breaks.
     subject: fill(o.subject, false).replace(/\s+/g, ' ').trim(),
-    body: fill(blocks, true),
+    body: fillBody(blocks),
   }
 }

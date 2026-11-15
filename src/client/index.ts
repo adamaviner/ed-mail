@@ -10,7 +10,7 @@ import { ConvexError, v, type Infer } from 'convex/values'
 import type { FunctionArgs, FunctionReturnType, Scheduler } from 'convex/server'
 import type { ComponentApi } from '../component/_generated/component.js'
 import { type BuiltInKind, type MailConfig, textProblem } from '../core/config.js'
-import { htmlToText } from '../core/emailHtml.js'
+import { emailShell, htmlToText } from '../core/emailHtml.js'
 import { GMAIL_SEND_SCOPE, GoogleError, type GoogleClient, accessToken, authUrl, exchangeCode, gmailSend, revoke } from '../core/google.js'
 import { type MimeAttachment, buildMime } from '../core/mime.js'
 import { safeHtml } from '../core/safeHtml.js'
@@ -174,8 +174,9 @@ export class Mail<C extends MailConfig> {
     for (const a of [...to, ...(cc ?? []), ...(msg.replyTo ? [msg.replyTo] : [])]) if (!isEmail(a)) throw new ConvexError(`“${a}” isn’t an email address.`)
     if (!to.length) throw new ConvexError('An email needs a recipient.')
     if (msg.html === undefined && msg.text === undefined) throw new ConvexError('An email needs a body.')
-    const html = msg.html ?? textToHtml(msg.text ?? '')
-    const text = msg.text ?? htmlToText(html)
+    // A text-only email gets the same frame as the rest; the plain text comes from the body, not the frame.
+    const html = msg.html ?? emailShell(textToHtml(msg.text ?? ''))
+    const text = msg.text ?? htmlToText(msg.html ?? '')
     const senderKey: string = msg.sender ?? spec.sender
     return {
       kind: msg.kind as string,
@@ -274,13 +275,14 @@ export class Mail<C extends MailConfig> {
     return saved ? { subject: saved.subject, body: saved.body, custom: true } : { ...spec.builtIn, custom: false }
   }
 
-  /** Saves wording for a kind: cleaned (safeHtml) and checked against the kind's placeholders first. */
-  async saveText(ctx: RunMutationCtx, kind: KindOf<C>, t: { subject: string; body: string }, by?: string): Promise<void> {
+  /** Saves wording for a kind: cleaned (safeHtml) and checked against the kind's placeholders first. Returns it as stored. */
+  async saveText(ctx: RunMutationCtx, kind: KindOf<C>, t: { subject: string; body: string }, by?: string): Promise<{ subject: string; body: string }> {
     const spec = this.kindSpec(kind)
     const clean = { subject: spec.email === false ? '' : t.subject.replace(/\s+/g, ' ').trim(), body: safeHtml(t.body.trim()) }
     const problem = textProblem(spec, clean)
     if (problem) throw new ConvexError(problem)
     await ctx.runMutation(this.component.texts.save, { key: kind, ...clean, by, now: Date.now() })
+    return clean
   }
 
   async resetText(ctx: RunMutationCtx, kind: KindOf<C>): Promise<void> {

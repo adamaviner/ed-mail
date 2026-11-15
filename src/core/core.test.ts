@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { defineMailConfig, textProblem } from './config.js'
 import { GoogleError, accessToken, exchangeCode } from './google.js'
 import { buildMime } from './mime.js'
+import { renderText } from './render.js'
 import { bodyHtml, fillTemplate, missingPlaceholders, placeholdersIn, unknownPlaceholders } from './template.js'
 import { textToHtml } from './text.js'
 import { decryptToken, encryptToken } from './tokenCrypt.js'
@@ -90,6 +91,35 @@ describe('templates', () => {
     expect(out).toEqual({ subject: 'For Ana <3', body: '<p>Dear Ana &lt;3,</p><ul><li>One</li></ul>' })
   })
 
+  test('renderText fills a kind’s letter by its spec, framed, with plain text', () => {
+    const spec = {
+      builtIn: { subject: '', body: '' },
+      placeholders: [
+        { key: 'name', label: 'Name' },
+        { key: 'link', label: 'Link' },
+        { key: 'extra', label: 'Extra', block: true },
+      ],
+      dropParagraph: ['link'],
+    }
+    const out = renderText(spec, { subject: 'Hi {name}', body: '<p>Dear {name},</p>\n<p><a href="{link}">Go</a></p>\n<p>{extra}</p>\n<p>Bye {nope}</p>' }, { name: 'Ana', link: '', extra: '' })
+    expect(out.subject).toBe('Hi Ana')
+    expect(out.unknown).toEqual(['nope'])
+    expect(out.html).toContain('Dear Ana,')
+    expect(out.html).not.toContain('Go')
+    expect(out.text).toBe('Dear Ana,\n\nBye {nope}')
+  })
+
+  test('a marked fill-in inside a link’s href is only escaped, so the link survives', () => {
+    const out = fillTemplate({
+      subject: '',
+      body: '<p><a href="{link}">Pay {amount}</a></p>',
+      values: { link: 'https://x.org/?a=1&b=2', amount: '$5' },
+      known: new Set(['link', 'amount']),
+      marked: () => true,
+    })
+    expect(out.body).toBe('<p><a href="https://x.org/?a=1&amp;b=2">Pay <span data-fill="amount">$5</span></a></p>')
+  })
+
   test('plain text becomes paragraphs', () => {
     expect(bodyHtml('One\nline\n\nTwo')).toBe('<p>One<br>\nline</p>\n<p>Two</p>')
     expect(textToHtml('A & B\n\nC')).toBe('<p>A &amp; B</p>\n<p>C</p>')
@@ -118,5 +148,9 @@ describe('config', () => {
     expect(textProblem(offer, { subject: '', body: '<p>{link}</p>' })).toBe('The email needs a subject.')
     expect(textProblem(offer, { subject: 'S', body: ' ' })).toBe('The text is empty.')
     expect(textProblem(offer, { subject: 'S', body: '<p>{link}</p>' })).toBeNull()
+    // A block placeholder is HTML, so it can't be the subject, even when it is also in the body.
+    const button = { ...offer, text: { ...offer.text, placeholders: [{ key: 'link', label: 'Link', block: true }] } }
+    expect(textProblem(button, { subject: 'Go: {link}', body: '<p>{link}</p>' })).toBe('{link} can only go in the body, not the subject.')
+    expect(textProblem(button, { subject: 'Go', body: '<p>{link}</p>' })).toBeNull()
   })
 })

@@ -74,15 +74,21 @@ export function adminApi<C extends MailConfig>(mail: Mail<C>, o: AdminApiOptions
       },
     }),
 
-    /** Queues a short test from one line to the admin pressing the button. Returns the message id, to watch in the log. */
+    /**
+     * Queues a test from one line to the admin pressing the button: a short note, or with `letter`
+     * the letter editor's preview as it would arrive. Returns the message id, to watch in the log.
+     */
     sendTest: mutationGeneric({
-      args: { auth, senderKey: v.string() },
+      args: { auth, senderKey: v.string(), letter: v.optional(v.object({ subject: v.string(), html: v.string() })) },
       handler: async (ctx, a) => {
         const who = await o.requireAdmin(ctx, a.auth)
         if (!who.email) throw new ConvexError('Your login has no email address to send the test to.')
         const title = mail.senderTitle(a.senderKey)
-        const text = `This is a test from ${title}. If you’re reading it, this line can send.`
-        return await mail.enqueue(ctx, { kind: 'mail.test', sender: a.senderKey, to: who.email, subject: `Test email: ${title}`, text, by: who.name } as Parameters<typeof mail.enqueue>[1])
+        // The letter is the editor's preview, frame and all, so safeHtml (which would drop the frame) isn't applied; it only goes to the admin's own address.
+        const content = a.letter
+          ? { subject: `Test: ${a.letter.subject || title}`, html: a.letter.html }
+          : { subject: `Test email: ${title}`, text: `This is a test from ${title}. If you’re reading it, this line can send.` }
+        return await mail.enqueue(ctx, { kind: 'mail.test', sender: a.senderKey, to: who.email, ...content, by: who.name } as Parameters<typeof mail.enqueue>[1])
       },
     }),
 
@@ -172,11 +178,12 @@ export function adminApi<C extends MailConfig>(mail: Mail<C>, o: AdminApiOptions
       },
     }),
 
+    /** Saves the wording and returns it as stored (cleaned), for the editor to show. */
     saveText: mutationGeneric({
       args: { auth, kind: v.string(), subject: v.string(), body: v.string() },
       handler: async (ctx, a) => {
         const who = await o.requireAdmin(ctx, a.auth)
-        await mail.saveText(ctx, a.kind as never, { subject: a.subject, body: a.body }, who.name)
+        return await mail.saveText(ctx, a.kind as never, { subject: a.subject, body: a.body }, who.name)
       },
     }),
 

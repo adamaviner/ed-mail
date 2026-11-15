@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { emailShell } from '../core/emailHtml.js'
 import { ADMIN, STAFF, app, defined, slept } from '../testing/app.js'
 import { fakeGoogle, gmailUnavailable, gmailUnauthorized } from '../testing/fakeGoogle.js'
 
@@ -304,7 +305,8 @@ describe('queueing and the drain', () => {
     const res = await t.action(api.app.sendNow, { to: 'ana@example.org', withFile: true })
     expect(res.ok).toBe(true)
     expect(google.sent[0]).toMatchObject({ text: 'Attached.\n\nThanks', attachments: [{ filename: 'Invoice.pdf', contentType: 'application/pdf', size: 3 }] })
-    expect(google.sent[0].html).toBe('<p>Attached.</p>\n<p>Thanks</p>')
+    // Typed as plain text: framed like every other email.
+    expect(google.sent[0].html).toBe(emailShell('<p>Attached.</p>\n<p>Thanks</p>'))
     expect((await log())[0]).toMatchObject({ status: 'sent', files: [{ filename: 'Invoice.pdf', size: 3 }] })
     await expect(t.mutation(api.mailAdmin.resend, { auth: ADMIN, id: res.id })).rejects.toThrow(/files attached/)
   })
@@ -315,6 +317,16 @@ describe('queueing and the drain', () => {
     await t.mutation(api.mailAdmin.sendTest, { auth: ADMIN, senderKey: 'welcome' })
     await settle()
     expect(google.sent[0]).toMatchObject({ to: ['admin@example.org'], subject: 'Test email: Emails to registrants' })
+  })
+
+  test('the letter editor’s test sends its preview, as it is, from the kind’s line', async () => {
+    const { t, connect, settle } = await setup()
+    await connect()
+    const html = '<table><tr><td><p>Hi Ana, <a href="https://example.org/x">take it</a></p></td></tr></table>'
+    await t.mutation(api.mailAdmin.sendTest, { auth: ADMIN, senderKey: 'welcome', letter: { subject: 'Your offer, Ana', html } })
+    await settle()
+    expect(google.sent[0]).toMatchObject({ to: ['admin@example.org'], subject: 'Test: Your offer, Ana' })
+    expect(google.sent[0].html).toContain('<table>')
   })
 
   test('recipients are checked; the log is searched by address', async () => {
@@ -334,8 +346,15 @@ describe('wording', () => {
     await expect(t.mutation(api.mailAdmin.saveText, { auth: ADMIN, kind: 'demo.offer', subject: 'Hi', body: '<p>No link</p>' })).rejects.toThrow('It must include {link}.')
     await expect(t.mutation(api.mailAdmin.saveText, { auth: ADMIN, kind: 'demo.offer', subject: 'Hi', body: '<p>{link} {nope}</p>' })).rejects.toThrow(/\{nope\}/)
     await expect(t.mutation(api.mailAdmin.saveText, { auth: ADMIN, kind: 'demo.offer', subject: ' ', body: '<p>{link}</p>' })).rejects.toThrow(/subject/)
-    await t.mutation(api.mailAdmin.saveText, { auth: ADMIN, kind: 'demo.offer', subject: ' Hi  {first_name} ', body: '<p onclick="x()">Go: <a href="{link}">here</a></p><script>x</script>' })
-    expect(await t.query(api.app.text, { kind: 'demo.offer' })).toEqual({ subject: 'Hi {first_name}', body: '<p>Go: <a href="{link}">here</a></p>&lt;script&gt;x&lt;/script&gt;', custom: true })
+    const stored = await t.mutation(api.mailAdmin.saveText, {
+      auth: ADMIN,
+      kind: 'demo.offer',
+      subject: ' Hi  {first_name} ',
+      body: '<p onclick="x()">Go: <a href="{link}">here</a></p><script>x</script>',
+    })
+    // Returned as stored, so the editor shows the cleaned text rather than what was typed.
+    expect(stored).toEqual({ subject: 'Hi {first_name}', body: '<p>Go: <a href="{link}">here</a></p>&lt;script&gt;x&lt;/script&gt;' })
+    expect(await t.query(api.app.text, { kind: 'demo.offer' })).toEqual({ ...stored, custom: true })
     const texts = await t.query(api.mailAdmin.texts, { auth: ADMIN })
     expect(texts.map((x) => x.kind)).toEqual(['demo.offer', 'demo.info'])
     expect(texts[0]).toMatchObject({ custom: true, updatedBy: 'Admin', builtIn: { subject: 'Your offer, {first_name}' } })

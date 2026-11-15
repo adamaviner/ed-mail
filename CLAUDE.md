@@ -10,5 +10,7 @@ ed-schedule's `docs/email-lib-plan.md`.
 - `core` imports neither Convex nor React. `component` has no network access and no secrets. Nothing
   here may assume an app's login, router, Vite or WordPress: ed-schedule and ed-market both use it.
 - List queries are paginated and indexed; never read `bodies` from a list query.
+- `react` uses only its own primitives (`src/react/ui`, on `@base-ui/react`) and shadcn token classes, never an app's
+  components. Tests that need a DOM start with `// @vitest-environment happy-dom`.
 - Comments explain why, in plain sentences.
 - Release only with `npm run release -- X.Y.Z`; never commit `dist` on a branch.
