@@ -1,12 +1,13 @@
 // Google sign-in (OAuth 2.0, web server flow) and Gmail's send endpoint, with plain fetch. Each
 // sender is one Google account that allowed the app to send mail as it (gmail.send only: such a
 // sign-in can't read the mailbox). An app may use the same helpers for a read-only sign-in of its
-// own (ed-schedule's chef inbox). Nothing here reads the environment: the app passes its OAuth
+// own (ed-schedule's chef inbox, and its Google Calendar sync with calendar.events). Nothing here reads the environment: the app passes its OAuth
 // client in.
 
 export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send'
 export const GMAIL_READONLY_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
-export type GmailScope = typeof GMAIL_SEND_SCOPE | typeof GMAIL_READONLY_SCOPE
+export const CALENDAR_EVENTS_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
+export type GoogleScope = typeof GMAIL_SEND_SCOPE | typeof GMAIL_READONLY_SCOPE | typeof CALENDAR_EVENTS_SCOPE
 
 /** The OAuth client from Google Cloud. */
 export interface GoogleClient {
@@ -29,8 +30,8 @@ export class GoogleError extends Error {
   }
 }
 
-/** Google's sign-in page, asking for the account's email and this one Gmail scope. */
-export function authUrl(o: { clientId: string; redirectUri: string; state: string; scope: GmailScope; loginHint?: string }): string {
+/** Google's sign-in page, asking for the account's email and this one scope. */
+export function authUrl(o: { clientId: string; redirectUri: string; state: string; scope: GoogleScope; loginHint?: string }): string {
   const params = new URLSearchParams({
     client_id: o.clientId,
     redirect_uri: o.redirectUri,
@@ -63,13 +64,14 @@ function googleProblem(body: Record<string, unknown>, status: number): GoogleErr
   return new GoogleError(`Google answered ${status}: ${detail}`, status === 401)
 }
 
-const SCOPE_MISSING: Record<GmailScope, string> = {
+const SCOPE_MISSING: Record<GoogleScope, string> = {
   [GMAIL_SEND_SCOPE]: 'Google sign-in didn’t include permission to send email. Try again and tick “Send email on your behalf”.',
   [GMAIL_READONLY_SCOPE]: 'Google sign-in didn’t include permission to read email. Try again and tick “View your email messages and settings”.',
+  [CALENDAR_EVENTS_SCOPE]: 'Google sign-in didn’t include permission to change calendar events. Try again and tick “View and edit events on all your calendars”.',
 }
 
 /** Trades the code Google sent back for a refresh token (which must carry `scope`), and says which account signed in. */
-export async function exchangeCode(o: { client: GoogleClient; redirectUri: string; code: string; scope: GmailScope }): Promise<{ refreshToken: string; email: string }> {
+export async function exchangeCode(o: { client: GoogleClient; redirectUri: string; code: string; scope: GoogleScope }): Promise<{ refreshToken: string; email: string }> {
   const body = await tokenRequest({ code: o.code, client_id: o.client.id, client_secret: o.client.secret, redirect_uri: o.redirectUri, grant_type: 'authorization_code' })
   const scopes = String(body.scope ?? '').split(' ')
   if (!scopes.includes(o.scope)) throw new GoogleError(SCOPE_MISSING[o.scope], false)
