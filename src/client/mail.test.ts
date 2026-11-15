@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { emailShell } from '../core/emailHtml.js'
 import { ADMIN, STAFF, app, defined, slept } from '../testing/app.js'
 import { fakeGoogle, gmailUnavailable, gmailUnauthorized } from '../testing/fakeGoogle.js'
 
@@ -304,7 +305,8 @@ describe('queueing and the drain', () => {
     const res = await t.action(api.app.sendNow, { to: 'ana@example.org', withFile: true })
     expect(res.ok).toBe(true)
     expect(google.sent[0]).toMatchObject({ text: 'Attached.\n\nThanks', attachments: [{ filename: 'Invoice.pdf', contentType: 'application/pdf', size: 3 }] })
-    expect(google.sent[0].html).toBe('<p>Attached.</p>\n<p>Thanks</p>')
+    // Typed as plain text: framed like every other email.
+    expect(google.sent[0].html).toBe(emailShell('<p>Attached.</p>\n<p>Thanks</p>'))
     expect((await log())[0]).toMatchObject({ status: 'sent', files: [{ filename: 'Invoice.pdf', size: 3 }] })
     await expect(t.mutation(api.mailAdmin.resend, { auth: ADMIN, id: res.id })).rejects.toThrow(/files attached/)
   })
