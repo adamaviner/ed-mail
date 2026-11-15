@@ -109,6 +109,17 @@ describe('templates', () => {
     expect(out.text).toBe('Dear Ana,\n\nBye {nope}')
   })
 
+  test('a marked fill-in inside a link’s href is only escaped, so the link survives', () => {
+    const out = fillTemplate({
+      subject: '',
+      body: '<p><a href="{link}">Pay {amount}</a></p>',
+      values: { link: 'https://x.org/?a=1&b=2', amount: '$5' },
+      known: new Set(['link', 'amount']),
+      marked: () => true,
+    })
+    expect(out.body).toBe('<p><a href="https://x.org/?a=1&amp;b=2">Pay <span data-fill="amount">$5</span></a></p>')
+  })
+
   test('plain text becomes paragraphs', () => {
     expect(bodyHtml('One\nline\n\nTwo')).toBe('<p>One<br>\nline</p>\n<p>Two</p>')
     expect(textToHtml('A & B\n\nC')).toBe('<p>A &amp; B</p>\n<p>C</p>')
