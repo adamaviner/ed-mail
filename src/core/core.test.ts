@@ -118,5 +118,9 @@ describe('config', () => {
     expect(textProblem(offer, { subject: '', body: '<p>{link}</p>' })).toBe('The email needs a subject.')
     expect(textProblem(offer, { subject: 'S', body: ' ' })).toBe('The text is empty.')
     expect(textProblem(offer, { subject: 'S', body: '<p>{link}</p>' })).toBeNull()
+    // A block placeholder is HTML, so it can't be the subject, even when it is also in the body.
+    const button = { ...offer, text: { ...offer.text, placeholders: [{ key: 'link', label: 'Link', block: true }] } }
+    expect(textProblem(button, { subject: 'Go: {link}', body: '<p>{link}</p>' })).toBe('{link} can only go in the body, not the subject.')
+    expect(textProblem(button, { subject: 'Go', body: '<p>{link}</p>' })).toBeNull()
   })
 })

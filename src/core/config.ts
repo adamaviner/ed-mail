@@ -3,7 +3,7 @@
 // and its placeholders. The app writes one with defineMailConfig in a pure module that both its
 // Convex functions and its browser code import, so the Admin page, the log's labels and the
 // server's checks all read the same list.
-import { type Letter, missingPlaceholders, unknownPlaceholders } from './template.js'
+import { type Letter, missingPlaceholders, placeholdersIn, unknownPlaceholders } from './template.js'
 
 export interface SenderSpec {
   /** What the sender line is called in Admin, e.g. "Emails to registrants". */
@@ -95,6 +95,10 @@ export function textProblem(kind: KindSpec, t: Letter): string | null {
   if (!t.body.trim()) return 'The text is empty.'
   const unknown = unknownPlaceholders(t, new Set(spec.placeholders.map((p) => p.key)))
   if (unknown.length) return `It uses ${unknown.map((k) => `{${k}}`).join(', ')}, which the app doesn’t know. Fix or remove ${unknown.length === 1 ? 'it' : 'them'} first.`
+  // A block (a button, a list) is HTML: in a subject it would arrive as tags.
+  const blocks = new Set(spec.placeholders.filter((p) => p.block).map((p) => p.key))
+  const inSubject = placeholdersIn({ subject: t.subject, body: '' }).filter((k) => blocks.has(k))
+  if (inSubject.length) return `${inSubject.map((k) => `{${k}}`).join(' and ')} can only go in the body, not the subject.`
   const missing = missingPlaceholders(t, spec.required ?? [])
   if (missing.length) return `It must include ${missing.map((k) => `{${k}}`).join(' and ')}.`
   return null
