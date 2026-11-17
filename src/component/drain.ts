@@ -21,8 +21,9 @@ const claimed = v.object({
 /**
  * Takes the sender's lease (if it is this drain's, or free, or run out) and claims the next due
  * messages, oldest first, marking them sending until the lease would run out. A claim that a crashed
- * drain left behind comes due again then, so very rarely one email goes out twice; that is accepted
- * over losing it.
+ * drain left behind comes due again then. The drain calls `begin` before each send, which renews the
+ * lease and stops a drain that lost it, so an email goes out twice only if one send hangs for longer
+ * than the lease; that is accepted over losing it.
  */
 export const claim = mutation({
   args: { senderKey: v.string(), senderTitle: v.string(), leaseId: v.string(), batch: v.number(), now: v.number() },
@@ -44,7 +45,7 @@ export const claim = mutation({
     const due = [...(await dueOf(ctx, senderKey, 'sending', now, batch)), ...(await dueOf(ctx, senderKey, 'queued', now, batch))].slice(0, batch)
     const out = []
     for (const m of due) {
-      await ctx.db.patch(m._id, { status: 'sending', attempts: m.attempts + 1, nextAttemptAt: until })
+      await ctx.db.patch(m._id, { status: 'sending', attempts: m.attempts + 1, nextAttemptAt: until, claimedBy: leaseId })
       const body = await ctx.db
         .query('bodies')
         .withIndex('by_message', (q) => q.eq('messageId', m._id))
@@ -52,6 +53,30 @@ export const claim = mutation({
       out.push({ message: view({ ...m, status: 'sending', attempts: m.attempts + 1 }), html: body?.html ?? '', text: body?.text ?? '', guard: m.guard ?? null })
     }
     return { state: 'claimed' as const, messages: out }
+  },
+})
+
+/**
+ * Called just before a claimed message is sent. 'go' when this drain still holds the lease and the
+ * message is still its own: the lease and the claim are renewed, so a batch slower than the lease
+ * isn't taken over halfway. 'skip' when the message was settled or cancelled meanwhile. 'lost' when
+ * another drain took the lease (this one ran too long): it must stop, since that drain now sends
+ * what this one had claimed.
+ */
+export const begin = mutation({
+  args: { id: v.id('messages'), senderKey: v.string(), leaseId: v.string(), now: v.number() },
+  returns: v.union(v.literal('go'), v.literal('skip'), v.literal('lost')),
+  handler: async (ctx, { id, senderKey, leaseId, now }) => {
+    const sender = await senderDoc(ctx, senderKey)
+    const lease = sender?.drainLease
+    if (!sender || (lease && lease.id !== leaseId && lease.until > now)) return 'lost'
+    const m = await ctx.db.get(id)
+    if (!m || m.status !== 'sending') return 'skip'
+    if (m.claimedBy !== undefined && m.claimedBy !== leaseId) return 'lost'
+    const until = now + LEASE_MS
+    await ctx.db.patch(sender._id, { drainLease: { id: leaseId, until } })
+    await ctx.db.patch(id, { nextAttemptAt: until, claimedBy: leaseId })
+    return 'go'
   },
 })
 

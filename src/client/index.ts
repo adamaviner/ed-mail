@@ -425,6 +425,11 @@ export class Mail<C extends MailConfig> {
           continue
         }
         if (sentOne && pause) await sleep(pause)
+        // Renews the lease right before the send; a drain that ran past its lease stops here instead of
+        // sending what the drain that took over now owns.
+        const go = await ctx.runMutation(this.component.drain.begin, { id: m.id, senderKey, leaseId, now: Date.now() })
+        if (go === 'lost') return
+        if (go === 'skip') continue
         try {
           creds ??= await ctx.runQuery(this.component.senders.credentials, { key: senderKey })
           if (!creds) throw new Error(`No Google account is connected for ${title}.`)
