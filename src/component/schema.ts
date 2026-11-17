@@ -59,6 +59,8 @@ export default defineSchema({
     attempts: v.number(),
     /** When a queued message is due; while sending, when its claim runs out (a crashed drain). */
     nextAttemptAt: v.number(),
+    /** While sending, the lease of the drain that claimed it: only that drain may send it. */
+    claimedBy: v.optional(v.string()),
     error: v.optional(v.string()),
     ref: v.optional(ref),
     /** A grouping for lists, e.g. the event an email is about. */

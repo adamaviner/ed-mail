@@ -24,6 +24,13 @@ import type { FunctionReference } from "convex/server";
 export type ComponentApi<Name extends string | undefined = string | undefined> =
   {
     drain: {
+      begin: FunctionReference<
+        "mutation",
+        "internal",
+        { id: string; leaseId: string; now: number; senderKey: string },
+        "go" | "skip" | "lost",
+        Name
+      >;
       cancel: FunctionReference<
         "mutation",
         "internal",

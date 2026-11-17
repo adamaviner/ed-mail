@@ -271,6 +271,68 @@ describe('queueing and the drain', () => {
     expect((await log()).every((m) => m.status === 'sent')).toBe(true)
   })
 
+  test('a drain that runs past its lease stops; the drain that took over sends each email once', async () => {
+    const { t, connect, later, log } = await setup()
+    await connect()
+    // A drain takes the lease for Ana's email (it is never scheduled: it stands for a slow drain).
+    const leaseId = await t.run(async (ctx) => {
+      const queued = await ctx.runMutation(app.components.mail.messages.enqueue, {
+        kind: 'demo.offer',
+        senderKey: 'welcome',
+        senderTitle: 'Emails to registrants',
+        to: ['ana@example.org'],
+        subject: 'Your offer',
+        html: '<p>x</p>',
+        text: 'x',
+        now: Date.now(),
+      })
+      return queued.drain!.leaseId
+    })
+    // Ben's email waits behind that lease, so a takeover is scheduled for when it runs out.
+    await t.mutation(api.app.offer, { to: 'ben@example.org' })
+    // The slow drain claims both, then takes longer than the lease before sending either.
+    const claim = await t.run((ctx) => ctx.runMutation(app.components.mail.drain.claim, { senderKey: 'welcome', senderTitle: 'x', leaseId, batch: 5, now: Date.now() }))
+    expect(claim.state === 'claimed' && claim.messages.length).toBe(2)
+    await later(4 * MINUTE)
+    expect(google.sent.map((m) => m.to[0]).sort()).toEqual(['ana@example.org', 'ben@example.org'])
+    // The slow drain wakes up: before each send it asks, and is told the emails are no longer its own.
+    for (const m of await log()) {
+      const go = await t.run((ctx) => ctx.runMutation(app.components.mail.drain.begin, { id: m.id, senderKey: 'welcome', leaseId, now: Date.now() }))
+      expect(go).not.toBe('go')
+    }
+    expect(google.sent).toHaveLength(2)
+  })
+
+  test('a claim settled by its first drain is skipped by the drain that took over', async () => {
+    const { t, connect } = await setup()
+    await connect()
+    const out = await t.run(async (ctx) => {
+      const queued = await ctx.runMutation(app.components.mail.messages.enqueue, {
+        kind: 'demo.offer',
+        senderKey: 'welcome',
+        senderTitle: 'Emails to registrants',
+        to: ['ana@example.org'],
+        subject: 'Your offer',
+        html: '<p>x</p>',
+        text: 'x',
+        now: Date.now(),
+      })
+      const first = queued.drain!.leaseId
+      await ctx.runMutation(app.components.mail.drain.claim, { senderKey: 'welcome', senderTitle: 'x', leaseId: first, batch: 5, now: Date.now() })
+      // The first drain's send is slow: the lease runs out and a second drain claims the same email.
+      const later = Date.now() + 4 * MINUTE
+      const claim = await ctx.runMutation(app.components.mail.drain.claim, { senderKey: 'welcome', senderTitle: 'x', leaseId: 'second', batch: 5, now: later })
+      const id = claim.state === 'claimed' ? claim.messages[0].message.id : null
+      // The first drain's send went through after all, and it says so.
+      await ctx.runMutation(app.components.mail.drain.settle, { id: id!, now: later + 1 })
+      return {
+        second: await ctx.runMutation(app.components.mail.drain.begin, { id: id!, senderKey: 'welcome', leaseId: 'second', now: later + 2 }),
+        first: await ctx.runMutation(app.components.mail.drain.begin, { id: id!, senderKey: 'welcome', leaseId: first, now: later + 2 }),
+      }
+    })
+    expect(out).toEqual({ second: 'skip', first: 'lost' })
+  })
+
   test('“Retry failed emails” queues the line’s failures again once it is connected', async () => {
     const { t, connect, settle, log, outcomes } = await setup()
     await t.mutation(api.app.offer, { to: 'ana@example.org' })
