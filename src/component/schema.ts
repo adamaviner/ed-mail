@@ -62,6 +62,8 @@ export default defineSchema({
     /** While sending, the lease of the drain that claimed it: only that drain may send it. */
     claimedBy: v.optional(v.string()),
     error: v.optional(v.string()),
+    /** Sent, but not quite as asked: e.g. an attachment left off because its link isn't a PDF. */
+    warning: v.optional(v.string()),
     ref: v.optional(ref),
     /** A grouping for lists, e.g. the event an email is about. */
     scope: v.optional(v.string()),

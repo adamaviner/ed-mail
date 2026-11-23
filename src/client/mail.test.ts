@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { emailShell } from '../core/emailHtml.js'
+import { emailDocument, emailShell } from '../core/emailHtml.js'
 import { ADMIN, STAFF, app, defined, slept } from '../testing/app.js'
 import { fakeGoogle, gmailUnavailable, gmailUnauthorized } from '../testing/fakeGoogle.js'
 
@@ -243,6 +243,15 @@ describe('queueing and the drain', () => {
     expect((await t.query(api.mailAdmin.senders, { auth: ADMIN })).senders.find((s) => s.key === 'welcome')!.sender!.lastError).toBeNull()
   })
 
+  test('a file that isn’t what was asked for is left off, and the email is sent with a warning', async () => {
+    const { t, connect, settle, log } = await setup()
+    await connect()
+    await t.mutation(api.app.offer, { to: 'ana@example.org', attachments: ['guide', 'webPage'] })
+    await settle()
+    expect(google.sent[0].attachments).toEqual([{ filename: 'Guide.pdf', contentType: 'application/pdf', size: 4 }])
+    expect((await log())[0]).toMatchObject({ status: 'sent', error: null, warning: 'Sent without the webPage attachment: The link leads to a web page, not a file.' })
+  })
+
   test('a drain that crashed leaves its claim; the next one takes over when the lease runs out', async () => {
     const { t, connect, later, log } = await setup()
     await connect()
@@ -368,7 +377,7 @@ describe('queueing and the drain', () => {
     expect(res.ok).toBe(true)
     expect(google.sent[0]).toMatchObject({ text: 'Attached.\n\nThanks', attachments: [{ filename: 'Invoice.pdf', contentType: 'application/pdf', size: 3 }] })
     // Typed as plain text: framed like every other email.
-    expect(google.sent[0].html).toBe(emailShell('<p>Attached.</p>\n<p>Thanks</p>'))
+    expect(google.sent[0].html).toBe(emailDocument(emailShell('<p>Attached.</p>\n<p>Thanks</p>')))
     expect((await log())[0]).toMatchObject({ status: 'sent', files: [{ filename: 'Invoice.pdf', size: 3 }] })
     await expect(t.mutation(api.mailAdmin.resend, { auth: ADMIN, id: res.id })).rejects.toThrow(/files attached/)
   })

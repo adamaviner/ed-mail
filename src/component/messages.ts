@@ -22,6 +22,7 @@ export const messageView = v.object({
   attempts: v.number(),
   nextAttemptAt: v.union(v.number(), v.null()),
   error: v.union(v.string(), v.null()),
+  warning: v.union(v.string(), v.null()),
   ref: v.union(ref, v.null()),
   scope: v.union(v.string(), v.null()),
   attachments: v.array(v.string()),
@@ -46,6 +47,7 @@ export function view(m: Doc<'messages'>) {
     attempts: m.attempts,
     nextAttemptAt: m.status === 'queued' ? m.nextAttemptAt : null,
     error: m.error ?? null,
+    warning: m.warning ?? null,
     ref: m.ref ?? null,
     scope: m.scope ?? null,
     attachments: m.attachments ?? [],
@@ -137,10 +139,13 @@ export const start = mutation({
 
 /** sendNow's outcome. */
 export const finish = mutation({
-  args: { id: v.id('messages'), error: v.optional(v.string()), now: v.number() },
+  args: { id: v.id('messages'), error: v.optional(v.string()), warning: v.optional(v.string()), now: v.number() },
   returns: v.null(),
-  handler: async (ctx, { id, error, now }) => {
-    await ctx.db.patch(id, error ? { status: 'failed', error: error.slice(0, 1000), settledAt: now } : { status: 'sent', error: undefined, sentAt: now, settledAt: now })
+  handler: async (ctx, { id, error, warning, now }) => {
+    await ctx.db.patch(
+      id,
+      error ? { status: 'failed', error: error.slice(0, 1000), settledAt: now } : { status: 'sent', error: undefined, warning: warning?.slice(0, 1000), sentAt: now, settledAt: now },
+    )
     return null
   },
 })

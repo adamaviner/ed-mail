@@ -86,6 +86,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 status: "queued" | "sending" | "sent" | "failed" | "cancelled";
                 subject: string;
                 to: Array<string>;
+                warning: string | null;
               };
               text: string;
             }>;
@@ -114,7 +115,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       settle: FunctionReference<
         "mutation",
         "internal",
-        { error?: string; id: string; now: number },
+        { error?: string; id: string; now: number; warning?: string },
         null | {
           error?: string;
           id: string;
@@ -163,6 +164,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           status: "queued" | "sending" | "sent" | "failed" | "cancelled";
           subject: string;
           to: Array<string>;
+          warning: string | null;
         }>,
         Name
       >;
@@ -217,7 +219,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       finish: FunctionReference<
         "mutation",
         "internal",
-        { error?: string; id: string; now: number },
+        { error?: string; id: string; now: number; warning?: string },
         null,
         Name
       >;
@@ -246,6 +248,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           status: "queued" | "sending" | "sent" | "failed" | "cancelled";
           subject: string;
           to: Array<string>;
+          warning: string | null;
         } | null,
         Name
       >;
@@ -280,6 +283,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             status: "queued" | "sending" | "sent" | "failed" | "cancelled";
             subject: string;
             to: Array<string>;
+            warning: string | null;
           };
           text: string;
         },
@@ -330,6 +334,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             status: "queued" | "sending" | "sent" | "failed" | "cancelled";
             subject: string;
             to: Array<string>;
+            warning: string | null;
           }>;
           pageStatus?: "SplitRecommended" | "SplitRequired" | null;
           splitCursor?: string | null;
@@ -388,6 +393,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           status: "queued" | "sending" | "sent" | "failed" | "cancelled";
           subject: string;
           to: Array<string>;
+          warning: string | null;
         }>,
         Name
       >;
@@ -446,6 +452,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           status: "queued" | "sending" | "sent" | "failed" | "cancelled";
           subject: string;
           to: Array<string>;
+          warning: string | null;
         } | null,
         Name
       >;

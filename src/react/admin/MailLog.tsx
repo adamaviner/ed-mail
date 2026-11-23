@@ -104,6 +104,7 @@ export function MailLog<C extends MailConfig>({ api, auth, config, showBodies = 
                       <span className="font-medium">{m.subject || '(no subject)'}</span>
                     </button>
                     {m.error && <p className="text-xs text-destructive">{m.error}</p>}
+                    {m.warning && <p className="text-xs text-amber-700 dark:text-amber-400">{m.warning}</p>}
                   </td>
                   <td className="px-3 py-2 break-all">{m.to.join(', ')}</td>
                 </tr>

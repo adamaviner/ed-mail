@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { defineMailConfig, textProblem } from './config.js'
 import { GoogleError, accessToken, exchangeCode } from './google.js'
+import { emailDocument } from './emailHtml.js'
 import { buildMime } from './mime.js'
 import { renderText } from './render.js'
 import { bodyHtml, fillTemplate, missingPlaceholders, placeholdersIn, unknownPlaceholders } from './template.js'
@@ -38,7 +39,7 @@ describe('mime', () => {
       cc: ['b@example.org'],
       replyTo: 'contact@earthdance.net',
       subject: 'Welcome — see you soon',
-      html: '<p>Hi</p>',
+      html: emailDocument('<p>Hi</p>'),
       text: 'Hi',
       attachments: [{ filename: 'Invoice.pdf', contentType: 'application/pdf', size: 3 }],
     })
