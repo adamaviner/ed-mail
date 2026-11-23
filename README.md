@@ -118,7 +118,7 @@ export const mail: Mail<typeof mailConfig> = new Mail(components.mail, {
   google: () => ..., encryptionSecret: () => ..., siteUrl: () => process.env.CONVEX_SITE_URL!,
   afterConnect: ({ senderKey, error }) => '<the admin page>',
   worker: internal.mailWorker,
-  attachments: { orientation: async (ctx) => fetchAttachment(url, 'Orientation.pdf') },
+  attachments: { orientation: async (ctx) => fetchAttachment(url, 'Orientation.pdf', { pdf: true }) },
 })
 
 // convex/mailWorker.ts
@@ -200,7 +200,7 @@ OAuth client id and secret, or null), `encryptionSecret`, `siteUrl`, `callbackPa
 | Method                                                          | From             | Does                                                                                                                                                                                                                                                            |
 | --------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `enqueue(ctx, message)`                                         | mutation         | Queues an email (logged, sent by the drain, retried); returns its id. `message`: `kind`, `to`, `cc`, `replyTo`, `subject`, `html` and/or `text`, `ref`, `scope`, `chain`, `attachments` (names), `onSettled`, `guard`, `by`, `sender` (to override the kind's). |
-| `sendNow(ctx, message)`                                         | action           | One attempt, logged, result returned; may carry `files` (bytes, not stored).                                                                                                                                                                                    |
+| `sendNow(ctx, message)`                                         | action           | One attempt, logged, result returned (with a `warning` when a named file was left off); may carry `files` (bytes, not stored).                                                                                                                                  |
 | `cancelChain(ctx, chain)`                                       | mutation         | Cancels what's still queued in a chain.                                                                                                                                                                                                                         |
 | `statusFor(ctx, ref, kind?)`                                    | query            | The latest email for a thing, for a badge.                                                                                                                                                                                                                      |
 | `ready(ctx, sender)` / `noticeAddress(ctx, sender)`             | query            | Whether a line can send / its account's address (never the token).                                                                                                                                                                                              |
@@ -214,14 +214,20 @@ OAuth client id and secret, or null), `encryptionSecret`, `siteUrl`, `callbackPa
 | `startConnect` / `handleOAuthCallback` / `registerRoutes(http)` | –                | Google sign-in for a line.                                                                                                                                                                                                                                      |
 
 Also: `settledArgs` / `guardArgs` (validators for the app's `onSettled` mutation and `guard`
-query) and `fetchAttachment(url, name)`.
+query) and `fetchAttachment(url, name, { pdf })`: Google Drive share links are fetched as downloads
+(`directDownloadUrl`), and a file that can't be right (a web page, not a PDF when `pdf` is asked
+for, too big) throws `AttachmentSkipped`: the email goes without it and the log row keeps a
+`warning`. `attachmentProblem(url, { pdf })` gives that sentence (or null), to check a link when
+an admin saves it.
 
 ### `@earthdance/mail/core` (anywhere)
 
 `defineMailConfig` (senders, kinds, `text` specs; checked where it's defined), `textProblem`,
 `renderText(spec, letter, values)` (a kind's letter filled for one recipient: subject, framed
 HTML, text), `fillTemplate`, `bodyHtml`, `placeholdersIn` / `unknownPlaceholders` /
-`missingPlaceholders`, `emailShell`, `htmlToText`, `textToHtml`, `safeHtml`, `escapeHtml`,
+`missingPlaceholders`, `emailShell` (a left-aligned 600px column, 16px text, no colours, so dark
+mode recolours it), `emailDocument` (the whole document with the viewport line; the MIME builder
+adds it), `htmlToText`, `textToHtml`, `safeHtml`, `escapeHtml`,
 `isEmail`, the MIME builder, and the Google OAuth helpers (`authUrl`, `exchangeCode`,
 `accessToken`, `revoke`) that an app's other Google features (ed-schedule's chef inbox) can share.
 

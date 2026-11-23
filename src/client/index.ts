@@ -120,14 +120,89 @@ interface Credentials {
   accessTokenExpiresAt?: number
 }
 
-/** Fetches a file from the web to attach (e.g. a PDF linked from a setting). */
-export async function fetchAttachment(url: string, fallbackName: string): Promise<MimeAttachment> {
-  const res = await fetch(url)
+/**
+ * A file that isn't what was asked for, or can't be emailed at all (a web page where a PDF was
+ * expected, too big). Unlike a network failure, trying again can't help, so the email goes without
+ * it and the log keeps the sentence as a warning.
+ */
+export class AttachmentSkipped extends Error {}
+
+export interface FetchAttachmentOptions {
+  /** Attach only a real PDF (checked by its first bytes, not just its type). */
+  pdf?: boolean
+}
+
+const DRIVE_FILE = /^https:\/\/drive\.google\.com\/(?:file\/d\/([\w-]+)|(?:open|uc)\?(?:[^#]*&)?id=([\w-]+))/
+const RESOURCE_KEY = /[?&]resourcekey=([\w-]+)/
+
+/**
+ * A Google Drive share link (…/file/d/<id>/view, open?id=, uc?id=) as Drive's direct download, which
+ * gives the file itself; the share link gives Drive's viewer page. Other links are returned as they are.
+ */
+export function directDownloadUrl(url: string): string {
+  const m = DRIVE_FILE.exec(url.trim())
+  if (!m) return url.trim()
+  // Files shared before Google's 2021 security update need their resource key to be downloaded.
+  const key = RESOURCE_KEY.exec(url)?.[1]
+  return `https://drive.google.com/uc?export=download&id=${m[1] ?? m[2]}${key ? `&resourcekey=${key}` : ''}`
+}
+
+const safeDecode = (s: string) => {
+  try {
+    return decodeURIComponent(s)
+  } catch {
+    return s
+  }
+}
+
+/** The file name a download says it has (Content-Disposition), if any. */
+function dispositionName(header: string | null): string | null {
+  if (!header) return null
+  const star = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header)
+  if (star) {
+    try {
+      return decodeURIComponent(star[1].trim())
+    } catch {
+      // Badly encoded: fall through to the plain name.
+    }
+  }
+  return /filename\s*=\s*"?([^";]+)"?/i.exec(header)?.[1].trim() || null
+}
+
+/**
+ * Fetches a file from the web to attach (e.g. a PDF linked from a setting). Drive share links are
+ * fetched as downloads. Throws AttachmentSkipped when what comes back can't be the file (a web page,
+ * not a PDF when `pdf` is asked for, too big); other errors (the site is down) are worth retrying.
+ */
+export async function fetchAttachment(url: string, fallbackName: string, options: FetchAttachmentOptions = {}): Promise<MimeAttachment> {
+  const download = directDownloadUrl(url)
+  const res = await fetch(download)
   if (!res.ok) throw new Error(`The attachment at ${url} couldn’t be fetched (${res.status}).`)
+  const type = res.headers.get('content-type')?.split(';')[0].trim().toLowerCase() || 'application/octet-stream'
   const data = new Uint8Array(await res.arrayBuffer())
-  if (data.length > MAX_FETCHED_BYTES) throw new Error(`The attachment at ${url} is too big to email.`)
-  const name = decodeURIComponent(new URL(url).pathname.split('/').pop() || '') || fallbackName
-  return { filename: name, contentType: res.headers.get('content-type')?.split(';')[0] || 'application/octet-stream', data }
+  if (data.length > MAX_FETCHED_BYTES) throw new AttachmentSkipped(`The attachment at ${url} is too big to email.`)
+  const isPdf = String.fromCharCode(...data.subarray(0, 5)) === '%PDF-'
+  if (type === 'text/html' && !isPdf) {
+    throw new AttachmentSkipped(`The link ${url} leads to a web page, not a file${download !== url.trim() ? ' (is the Drive file shared with “Anyone with the link”?)' : ''}.`)
+  }
+  if (options.pdf && !isPdf) throw new AttachmentSkipped(`The link ${url} doesn’t lead to a PDF.`)
+  // Drive's download address ends in "uc", so its name comes from the download's header or the fallback.
+  const fromUrl = download === url.trim() ? safeDecode(new URL(download).pathname.split('/').pop() || '') : ''
+  let name = dispositionName(res.headers.get('content-disposition')) || fromUrl || fallbackName
+  if (options.pdf && !/\.pdf$/i.test(name)) name += '.pdf'
+  return { filename: name, contentType: options.pdf || isPdf ? 'application/pdf' : type, data }
+}
+
+/** Why the link can't be attached, or null when it can: for checking a link when it's saved. */
+export async function attachmentProblem(url: string, options: FetchAttachmentOptions = {}): Promise<string | null> {
+  try {
+    await fetchAttachment(url, 'file', options)
+    return null
+  } catch (err) {
+    if (err instanceof AttachmentSkipped) return err.message
+    // A site that is down or a link that doesn't parse: a sentence, not the bare "fetch failed".
+    return `The link ${url} couldn’t be opened (${errorText(err)}). Check it and try again.`
+  }
 }
 
 const errorText = (err: unknown) => (err instanceof ConvexError ? String(err.data) : err instanceof Error ? err.message : String(err))
@@ -224,26 +299,28 @@ export class Mail<C extends MailConfig> {
   async sendNow(
     ctx: RunActionCtx,
     msg: Omit<OutgoingMessage<C>, 'onSettled' | 'guard' | 'chain'> & { files?: MimeAttachment[] },
-  ): Promise<{ id: string; ok: true } | { id: string; ok: false; error: string }> {
+  ): Promise<{ id: string; ok: true; warning?: string } | { id: string; ok: false; error: string }> {
     const row = await this.prepare(msg)
     const files = msg.files ?? []
     const { onSettled: _o, guard: _g, ...logged } = row
     const started = await ctx.runMutation(this.component.messages.start, { ...logged, files: files.map((f) => ({ filename: f.filename, contentType: f.contentType, size: f.data.length })) })
     if (started.error) return { id: started.id, ok: false, error: started.error }
     let error: string | undefined
+    let warning: string | undefined
     try {
       const creds = await ctx.runQuery(this.component.senders.credentials, { key: row.senderKey })
       if (!creds) throw new Error(`No Google account is connected for ${row.senderTitle}.`)
       const named = await this.namedAttachments(ctx, row.attachments ?? [], new Map())
+      warning = named.warning
       const token = await this.token(ctx, creds)
-      await gmailSend(token, this.mime(creds, row, [...files, ...named]))
+      await gmailSend(token, this.mime(creds, row, [...files, ...named.files]))
       if (creds.lastError) await ctx.runMutation(this.component.senders.recordError, { key: row.senderKey, now: Date.now() })
     } catch (err) {
       error = this.problem(err, row.senderKey)
       if (err instanceof GoogleError) await ctx.runMutation(this.component.senders.recordError, { key: row.senderKey, error, now: Date.now() })
     }
-    await ctx.runMutation(this.component.messages.finish, { id: started.id, error, now: Date.now() })
-    return error ? { id: started.id, ok: false, error } : { id: started.id, ok: true }
+    await ctx.runMutation(this.component.messages.finish, { id: started.id, error, warning, now: Date.now() })
+    return error ? { id: started.id, ok: false, error } : { id: started.id, ok: true, ...(warning ? { warning } : {}) }
   }
 
   /** Cancels the still-queued emails of a chain (e.g. an offer that was withdrawn). */
@@ -359,18 +436,26 @@ export class Mail<C extends MailConfig> {
     return err instanceof GoogleError ? `Gmail (${this.senderTitle(senderKey)}) didn’t send it: ${err.message}` : errorText(err)
   }
 
-  private async namedAttachments(ctx: RunQueryCtx, names: string[], cache: Map<string, MimeAttachment | null>): Promise<MimeAttachment[]> {
-    const out: MimeAttachment[] = []
+  /** The named files to attach, and a warning for each one left off (AttachmentSkipped). */
+  private async namedAttachments(ctx: RunQueryCtx, names: string[], cache: Map<string, MimeAttachment | AttachmentSkipped | null>): Promise<{ files: MimeAttachment[]; warning?: string }> {
+    const files: MimeAttachment[] = []
+    const skipped: string[] = []
     for (const name of names) {
       if (!cache.has(name)) {
         const resolve = this.options.attachments?.[name]
         if (!resolve) throw new Error(`The app has no attachment called “${name}”.`)
-        cache.set(name, await resolve(ctx))
+        try {
+          cache.set(name, await resolve(ctx))
+        } catch (err) {
+          if (!(err instanceof AttachmentSkipped)) throw err
+          cache.set(name, err)
+        }
       }
       const file = cache.get(name)
-      if (file) out.push(file)
+      if (file instanceof AttachmentSkipped) skipped.push(`Sent without the ${name} attachment: ${file.message}`)
+      else if (file) files.push(file)
     }
-    return out
+    return { files, warning: skipped.length ? skipped.join(' ') : undefined }
   }
 
   private async callSettled(ctx: RunMutationCtx, calls: { id: string; onSettled: { handle: string; context?: unknown }; error?: string }[]) {
@@ -387,7 +472,7 @@ export class Mail<C extends MailConfig> {
   async drain(ctx: RunActionCtx, senderKey: string, leaseId: string): Promise<void> {
     const started = Date.now()
     const title = this.senderTitle(senderKey)
-    const files = new Map<string, MimeAttachment | null>()
+    const files = new Map<string, MimeAttachment | AttachmentSkipped | null>()
     const pause = this.options.pauseMs ?? 1500
     const sleep = this.options.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
     let creds: Credentials | null = null
@@ -416,7 +501,7 @@ export class Mail<C extends MailConfig> {
             continue
           }
         }
-        let attached: MimeAttachment[]
+        let attached: { files: MimeAttachment[]; warning?: string }
         try {
           attached = await this.namedAttachments(ctx, m.attachments, files)
         } catch (err) {
@@ -433,7 +518,7 @@ export class Mail<C extends MailConfig> {
         try {
           creds ??= await ctx.runQuery(this.component.senders.credentials, { key: senderKey })
           if (!creds) throw new Error(`No Google account is connected for ${title}.`)
-          const mime = this.mime(creds, { ...m, replyTo: m.replyTo ?? undefined, html, text }, attached)
+          const mime = this.mime(creds, { ...m, replyTo: m.replyTo ?? undefined, html, text }, attached.files)
           token ??= await this.token(ctx, creds)
           try {
             await gmailSend(token, mime)
@@ -448,7 +533,7 @@ export class Mail<C extends MailConfig> {
             await ctx.runMutation(this.component.senders.recordError, { key: senderKey, now: Date.now() })
             cleared = true
           }
-          await this.settle(ctx, m.id)
+          await this.settle(ctx, m.id, undefined, attached.warning)
         } catch (err) {
           const problem = this.problem(err, senderKey)
           if (err instanceof GoogleError && err.auth) {
@@ -467,8 +552,8 @@ export class Mail<C extends MailConfig> {
   }
 
   /** Records one attempt; calls onSettled when that was the last word. */
-  private async settle(ctx: RunActionCtx, id: string, error?: string) {
-    const call = await ctx.runMutation(this.component.drain.settle, { id, error, now: Date.now() })
+  private async settle(ctx: RunActionCtx, id: string, error?: string, warning?: string) {
+    const call = await ctx.runMutation(this.component.drain.settle, { id, error, warning, now: Date.now() })
     if (call) await this.callSettled(ctx, [call])
   }
 

@@ -52,16 +52,14 @@ function subscribe(cb: () => void) {
 /** The app's theme (light unless <html> has the `dark` class), watched for changes. */
 export const useAppTheme = (): PreviewTheme => useSyncExternalStore(subscribe, appTheme, () => 'light')
 
-const PREVIEW_CSS = 'body{font:14px/1.5 system-ui,sans-serif;color:#222;margin:12px}'
+const PREVIEW_CSS = 'body{font:14px/1.5 system-ui,sans-serif;color:#222;margin:12px}a{color:#1a5fb4}'
 
 /**
- * The letter in dark colors. The mail sets its colors inline (emailHtml.ts, for clients in dark
- * mode), so this overrides just those defaults; colors an admin set themselves stay.
+ * The letter in dark colors, as a mail app in dark mode shows it. The mail sets no colors of its own
+ * (emailHtml.ts), so this only softens the borders; colors an admin set themselves stay.
  */
 const DARK_CSS =
-  ':root{color-scheme:dark}body{background:oklch(0.205 0 0);color:oklch(0.985 0 0)}' +
-  '[style*="background-color:#ffffff"]{background-color:transparent!important}[style*="color:#222222"]{color:inherit!important}' +
-  'a[style*="color:#1a5fb4"]{color:#8ab4f8!important}blockquote[style*="color:#555555"]{color:#b5b5b5!important}' +
+  ':root{color-scheme:dark}body{background:oklch(0.205 0 0);color:oklch(0.985 0 0)}a{color:#8ab4f8}' +
   '[style*="border-left:3px solid #cccccc"]{border-left-color:#555!important}hr[style*="#dddddd"]{border-top-color:#444!important}'
 
 /** The page an email's HTML is shown in, light or dark. */

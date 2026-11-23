@@ -107,13 +107,13 @@ async function failAll(ctx: MutationCtx, senderKey: string, error: string, now: 
  * it is final. `onSettled` comes back only when the outcome is final, never between retries.
  */
 export const settle = mutation({
-  args: { id: v.id('messages'), error: v.optional(v.string()), now: v.number() },
+  args: { id: v.id('messages'), error: v.optional(v.string()), warning: v.optional(v.string()), now: v.number() },
   returns: v.union(v.null(), settledCall),
-  handler: async (ctx, { id, error, now }) => {
+  handler: async (ctx, { id, error, warning, now }) => {
     const m = await ctx.db.get(id)
     if (!m || m.status !== 'sending') return null
     if (!error) {
-      await ctx.db.patch(id, { status: 'sent', error: undefined, sentAt: now, settledAt: now })
+      await ctx.db.patch(id, { status: 'sent', error: undefined, warning: warning?.slice(0, 1000), sentAt: now, settledAt: now })
       return m.onSettled ? { id, onSettled: m.onSettled } : null
     }
     const { retryMinutes } = await readSettings(ctx)

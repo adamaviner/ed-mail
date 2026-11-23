@@ -1,27 +1,26 @@
-// Turns a welcome email's body HTML into what goes out: every tag the editor makes styled inline
-// (email clients drop stylesheets), images no wider than the column, the whole thing in a table
-// frame that Outlook lays out too, and a plain-text version for clients (and spam filters) that
-// want one. Pure string work, so it runs the same in Convex mutations and the browser preview.
+// Turns a letter's body HTML into what goes out: every tag the editor makes styled inline (email
+// clients drop stylesheets), images no wider than the column, the whole thing in a column that
+// Outlook lays out too, and a plain-text version for clients (and spam filters) that want one.
+// No colours are set except borders, so a client in dark mode recolours the letter as it does a
+// personal email (a forced white background showed as a white box in Apple Mail's dark mode). Pure string work, so it runs the same in Convex mutations and the browser preview.
 // Imported from convex/ too, so no path aliases here.
 
 /** The column's width; images are capped to it. */
 export const EMAIL_WIDTH = 600
 
 const FONT = 'Helvetica,Arial,sans-serif'
-const TEXT = '#222222'
-const BACKGROUND = '#ffffff'
 
 /** Inline styles for each tag the editor produces. A tag's own style (text-align) comes after, so it wins. */
 const TAG_STYLES: Record<string, string> = {
   p: 'margin:0 0 16px',
-  h1: `margin:0 0 16px;font-size:26px;line-height:1.25;font-weight:bold;color:${TEXT}`,
-  h2: `margin:24px 0 12px;font-size:21px;line-height:1.3;font-weight:bold;color:${TEXT}`,
-  h3: `margin:20px 0 8px;font-size:17px;line-height:1.3;font-weight:bold;color:${TEXT}`,
+  h1: 'margin:0 0 16px;font-size:26px;line-height:1.25;font-weight:bold',
+  h2: 'margin:24px 0 12px;font-size:21px;line-height:1.3;font-weight:bold',
+  h3: 'margin:20px 0 8px;font-size:18px;line-height:1.3;font-weight:bold',
   ul: 'margin:0 0 16px;padding-left:24px',
   ol: 'margin:0 0 16px;padding-left:24px',
   li: 'margin:0 0 4px',
-  a: 'color:#1a5fb4;text-decoration:underline',
-  blockquote: 'margin:0 0 16px;padding-left:12px;border-left:3px solid #cccccc;color:#555555',
+  a: 'text-decoration:underline',
+  blockquote: 'margin:0 0 16px;padding-left:12px;border-left:3px solid #cccccc',
   hr: 'border:0;border-top:1px solid #dddddd;margin:24px 0',
   img: 'display:block;max-width:100%;height:auto;border:0;margin:0 0 16px',
 }
@@ -56,19 +55,41 @@ export function capImageWidths(html: string): string {
 }
 
 /**
- * The body, styled, inside the email's frame: a centered column at most 600px wide on a white
- * background (set explicitly, for dark-mode clients), with a fixed-width table only Outlook reads.
+ * The body, styled, in a left-aligned column at most 600px wide, like a letter typed in Gmail, with
+ * a fixed-width table only Outlook reads. 16px text: 15px read small on phones.
  */
 export function emailShell(html: string): string {
   const body = inlineStyles(capImageWidths(unwrapListParagraphs(html)))
   return [
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${BACKGROUND}"><tr><td align="center" style="padding:16px">`,
     `<!--[if mso]><table role="presentation" width="${EMAIL_WIDTH}" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->`,
-    `<div style="max-width:${EMAIL_WIDTH}px;margin:0 auto;text-align:left;font-family:${FONT};font-size:15px;line-height:1.5;color:${TEXT};background-color:${BACKGROUND}">`,
+    `<div style="max-width:${EMAIL_WIDTH}px;text-align:left;font-family:${FONT};font-size:16px;line-height:1.5">`,
     body,
     '</div>',
     '<!--[if mso]></td></tr></table><![endif]-->',
-    '</td></tr></table>',
+  ].join('\n')
+}
+
+/**
+ * The HTML as a whole document, as it is sent. Mail apps that show email in a web view (Thunderbird
+ * on Android) lay out a bare fragment at desktop width and shrink it, so the text came out small;
+ * the viewport line stops that. `color-scheme` tells Apple Mail the letter is fine in dark mode.
+ * HTML that is already a document is left alone.
+ */
+export function emailDocument(html: string): string {
+  if (/^\s*(<!doctype|<html)/i.test(html)) return html
+  return [
+    '<!doctype html>',
+    '<html>',
+    '<head>',
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    '<meta name="color-scheme" content="light dark">',
+    '<meta name="supported-color-schemes" content="light dark">',
+    '</head>',
+    '<body>',
+    html,
+    '</body>',
+    '</html>',
   ].join('\n')
 }
 

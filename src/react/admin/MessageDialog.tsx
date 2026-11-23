@@ -46,6 +46,7 @@ export function MessageDialog<C extends MailConfig>({
         <div className="flex items-center gap-2">
           <MailStatus status={m.status} />
           {m.error && <span className="text-sm text-destructive">{m.error}</span>}
+          {m.warning && <span className="text-sm text-amber-700 dark:text-amber-400">{m.warning}</span>}
         </div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
           {facts.map(([label, value]) => (

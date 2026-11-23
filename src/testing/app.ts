@@ -4,7 +4,7 @@ import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 import { defineTestApp } from 'convex-test'
 import { defineMailConfig } from '../core/config.js'
-import { Mail, type MailOptions, guardArgs, settledArgs } from '../client/index.js'
+import { AttachmentSkipped, Mail, type MailOptions, guardArgs, settledArgs } from '../client/index.js'
 import mailTest from '../test.js'
 
 export const config = defineMailConfig({
@@ -59,6 +59,9 @@ export const mail: Mail<typeof config> = new Mail(app.components.mail, {
       throw new Error('The guide link is broken.')
     },
     none: async () => null,
+    webPage: async () => {
+      throw new AttachmentSkipped('The link leads to a web page, not a file.')
+    },
   },
   logUrl: () => 'https://app.example.org/admin/email?tab=log',
   sleep: async (ms) => void slept.push(ms),
@@ -104,14 +107,15 @@ export const defined = app.defineModules({
         }),
     }),
     sendNow: app.action({
-      args: { to: v.string(), withFile: v.optional(v.boolean()) },
-      handler: async (ctx, a): Promise<{ id: string; ok: boolean; error?: string }> =>
+      args: { to: v.string(), withFile: v.optional(v.boolean()), attachments: v.optional(v.array(v.string())) },
+      handler: async (ctx, a): Promise<{ id: string; ok: boolean; error?: string; warning?: string }> =>
         await mail.sendNow(ctx, {
           kind: 'accounts.verify',
           to: a.to,
           subject: 'Invoice',
           text: 'Attached.\n\nThanks',
           files: a.withFile ? [{ filename: 'Invoice.pdf', contentType: 'application/pdf', data: new Uint8Array([1, 2, 3]) }] : undefined,
+          attachments: a.attachments,
         }),
     }),
     callback: app.action({

@@ -22,6 +22,7 @@ const message: MailMessage = {
   status: 'failed',
   attempts: 4,
   nextAttemptAt: null,
+  warning: null,
   error: 'Gmail said no.',
   ref: { type: 'application', id: 'a1' },
   scope: null,

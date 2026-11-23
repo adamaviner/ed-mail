@@ -1,6 +1,8 @@
 // Builds an email as raw MIME text, for Gmail's send endpoint (convex/lib/google.ts). Every part
 // is base64, so any text and any file go through unchanged.
 
+import { emailDocument } from './emailHtml.js'
+
 export interface MimeAttachment {
   filename: string
   contentType: string
@@ -58,7 +60,13 @@ export function buildMime(mail: MimeMail, boundary = crypto.randomUUID().replace
     'MIME-Version: 1.0',
   ]
   const part = (contentType: string, data: Uint8Array, extra: string[] = []) => [`Content-Type: ${contentType}`, 'Content-Transfer-Encoding: base64', ...extra, '', wrapped(data)].join('\r\n')
-  const body = [`--${alt}`, part('text/plain; charset=UTF-8', encoder.encode(mail.text ?? '')), `--${alt}`, part('text/html; charset=UTF-8', encoder.encode(mail.html)), `--${alt}--`].join('\r\n')
+  const body = [
+    `--${alt}`,
+    part('text/plain; charset=UTF-8', encoder.encode(mail.text ?? '')),
+    `--${alt}`,
+    part('text/html; charset=UTF-8', encoder.encode(emailDocument(mail.html))),
+    `--${alt}--`,
+  ].join('\r\n')
   if (!mail.attachments?.length) return [...headers, `Content-Type: multipart/alternative; boundary="${alt}"`, '', body, ''].join('\r\n')
   const files = mail.attachments.map((a) => {
     const name = headerText(a.filename.replace(/["\\]/g, ''))
