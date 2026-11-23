@@ -21,6 +21,7 @@ test('directDownloadUrl turns Drive share links into downloads and leaves others
   expect(directDownloadUrl('https://drive.google.com/file/d/12X19TXw_T-a/view?usp=sharing')).toBe(download)
   expect(directDownloadUrl('https://drive.google.com/open?id=12X19TXw_T-a')).toBe(download)
   expect(directDownloadUrl('https://drive.google.com/uc?export=download&id=12X19TXw_T-a')).toBe(download)
+  expect(directDownloadUrl('https://drive.google.com/file/d/12X19TXw_T-a/view?usp=sharing&resourcekey=0-AbC_d')).toBe(`${download}&resourcekey=0-AbC_d`)
   expect(directDownloadUrl(' https://earthdance.net/files/Orientation.pdf ')).toBe('https://earthdance.net/files/Orientation.pdf')
 })
 
@@ -49,6 +50,11 @@ test('a site that is down is an ordinary error, retried, not a skip', async () =
   const err = await fetchAttachment('https://example.org/Orientation.pdf', 'Orientation.pdf').catch((e: unknown) => e)
   expect(err).toBeInstanceOf(Error)
   expect(err).not.toBeInstanceOf(AttachmentSkipped)
+  expect(await attachmentProblem('https://example.org/Orientation.pdf', { pdf: true })).toMatch(
+    /^The link https:\/\/example.org\/Orientation.pdf couldn’t be opened \(.*503.*\)\. Check it and try again\.$/,
+  )
   serve(PDF, { 'content-type': 'application/pdf' })
   expect(await attachmentProblem('https://example.org/files/Orientation.pdf', { pdf: true })).toBeNull()
+  // A badly encoded name doesn't throw; the file is named as the link spells it.
+  expect((await fetchAttachment('https://example.org/files/Bad%E0name.pdf', 'Orientation.pdf', { pdf: true })).filename).toBe('Bad%E0name.pdf')
 })

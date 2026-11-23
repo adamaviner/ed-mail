@@ -107,14 +107,15 @@ export const defined = app.defineModules({
         }),
     }),
     sendNow: app.action({
-      args: { to: v.string(), withFile: v.optional(v.boolean()) },
-      handler: async (ctx, a): Promise<{ id: string; ok: boolean; error?: string }> =>
+      args: { to: v.string(), withFile: v.optional(v.boolean()), attachments: v.optional(v.array(v.string())) },
+      handler: async (ctx, a): Promise<{ id: string; ok: boolean; error?: string; warning?: string }> =>
         await mail.sendNow(ctx, {
           kind: 'accounts.verify',
           to: a.to,
           subject: 'Invoice',
           text: 'Attached.\n\nThanks',
           files: a.withFile ? [{ filename: 'Invoice.pdf', contentType: 'application/pdf', data: new Uint8Array([1, 2, 3]) }] : undefined,
+          attachments: a.attachments,
         }),
     }),
     callback: app.action({

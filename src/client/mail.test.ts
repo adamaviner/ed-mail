@@ -382,6 +382,15 @@ describe('queueing and the drain', () => {
     await expect(t.mutation(api.mailAdmin.resend, { auth: ADMIN, id: res.id })).rejects.toThrow(/files attached/)
   })
 
+  test('sendNow leaves off a file that isn’t what was asked for, and says so in its result and the log', async () => {
+    const { t, connect, log } = await setup()
+    await connect('accounts')
+    const res = await t.action(api.app.sendNow, { to: 'ana@example.org', attachments: ['guide', 'webPage'] })
+    expect(res).toMatchObject({ ok: true, warning: 'Sent without the webPage attachment: The link leads to a web page, not a file.' })
+    expect(google.sent[0].attachments).toEqual([{ filename: 'Guide.pdf', contentType: 'application/pdf', size: 4 }])
+    expect((await log())[0]).toMatchObject({ status: 'sent', warning: res.warning })
+  })
+
   test('a test email goes to the admin pressing the button', async () => {
     const { t, connect, settle } = await setup()
     await connect()

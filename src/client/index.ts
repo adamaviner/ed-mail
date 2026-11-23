@@ -133,6 +133,7 @@ export interface FetchAttachmentOptions {
 }
 
 const DRIVE_FILE = /^https:\/\/drive\.google\.com\/(?:file\/d\/([\w-]+)|(?:open|uc)\?(?:[^#]*&)?id=([\w-]+))/
+const RESOURCE_KEY = /[?&]resourcekey=([\w-]+)/
 
 /**
  * A Google Drive share link (…/file/d/<id>/view, open?id=, uc?id=) as Drive's direct download, which
@@ -140,7 +141,18 @@ const DRIVE_FILE = /^https:\/\/drive\.google\.com\/(?:file\/d\/([\w-]+)|(?:open|
  */
 export function directDownloadUrl(url: string): string {
   const m = DRIVE_FILE.exec(url.trim())
-  return m ? `https://drive.google.com/uc?export=download&id=${m[1] ?? m[2]}` : url.trim()
+  if (!m) return url.trim()
+  // Files shared before Google's 2021 security update need their resource key to be downloaded.
+  const key = RESOURCE_KEY.exec(url)?.[1]
+  return `https://drive.google.com/uc?export=download&id=${m[1] ?? m[2]}${key ? `&resourcekey=${key}` : ''}`
+}
+
+const safeDecode = (s: string) => {
+  try {
+    return decodeURIComponent(s)
+  } catch {
+    return s
+  }
 }
 
 /** The file name a download says it has (Content-Disposition), if any. */
@@ -175,7 +187,7 @@ export async function fetchAttachment(url: string, fallbackName: string, options
   }
   if (options.pdf && !isPdf) throw new AttachmentSkipped(`The link ${url} doesn’t lead to a PDF.`)
   // Drive's download address ends in "uc", so its name comes from the download's header or the fallback.
-  const fromUrl = download === url.trim() ? decodeURIComponent(new URL(download).pathname.split('/').pop() || '') : ''
+  const fromUrl = download === url.trim() ? safeDecode(new URL(download).pathname.split('/').pop() || '') : ''
   let name = dispositionName(res.headers.get('content-disposition')) || fromUrl || fallbackName
   if (options.pdf && !/\.pdf$/i.test(name)) name += '.pdf'
   return { filename: name, contentType: options.pdf || isPdf ? 'application/pdf' : type, data }
@@ -187,7 +199,9 @@ export async function attachmentProblem(url: string, options: FetchAttachmentOpt
     await fetchAttachment(url, 'file', options)
     return null
   } catch (err) {
-    return err instanceof Error ? err.message : String(err)
+    if (err instanceof AttachmentSkipped) return err.message
+    // A site that is down or a link that doesn't parse: a sentence, not the bare "fetch failed".
+    return `The link ${url} couldn’t be opened (${errorText(err)}). Check it and try again.`
   }
 }
 
@@ -285,7 +299,7 @@ export class Mail<C extends MailConfig> {
   async sendNow(
     ctx: RunActionCtx,
     msg: Omit<OutgoingMessage<C>, 'onSettled' | 'guard' | 'chain'> & { files?: MimeAttachment[] },
-  ): Promise<{ id: string; ok: true } | { id: string; ok: false; error: string }> {
+  ): Promise<{ id: string; ok: true; warning?: string } | { id: string; ok: false; error: string }> {
     const row = await this.prepare(msg)
     const files = msg.files ?? []
     const { onSettled: _o, guard: _g, ...logged } = row
@@ -306,7 +320,7 @@ export class Mail<C extends MailConfig> {
       if (err instanceof GoogleError) await ctx.runMutation(this.component.senders.recordError, { key: row.senderKey, error, now: Date.now() })
     }
     await ctx.runMutation(this.component.messages.finish, { id: started.id, error, warning, now: Date.now() })
-    return error ? { id: started.id, ok: false, error } : { id: started.id, ok: true }
+    return error ? { id: started.id, ok: false, error } : { id: started.id, ok: true, ...(warning ? { warning } : {}) }
   }
 
   /** Cancels the still-queued emails of a chain (e.g. an offer that was withdrawn). */
