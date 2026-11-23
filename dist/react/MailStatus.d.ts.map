@@ -1,0 +1,1 @@
+{"version":3,"file":"MailStatus.d.ts","sourceRoot":"","sources":["../../src/react/MailStatus.tsx"],"names":[],"mappings":"AAAA,MAAM,MAAM,eAAe,GAAG,QAAQ,GAAG,SAAS,GAAG,MAAM,GAAG,QAAQ,GAAG,WAAW,CAAA;AAIpF,wFAAwF;AACxF,wBAAgB,UAAU,CAAC,EAAE,MAAM,EAAE,KAAK,EAAE,EAAE;IAAE,MAAM,EAAE,eAAe,CAAC;IAAC,KAAK,CAAC,EAAE,MAAM,CAAA;CAAE,+BAOxF"}
